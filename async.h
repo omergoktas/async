@@ -75,6 +75,16 @@ void runHelperImpl(std::false_type, QFutureInterface<ReturnType>* futureInterfac
          std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
+// Başarısız çıkarsama bir hata değildir
+
+template <typename...> using void_t = void;
+
+template <typename T, typename = void>
+struct is_function_call_viable : std::false_type {};
+
+template <typename T>
+struct is_function_call_viable<T, void_t<std::result_of_t<T>>> : std::true_type {};
+
 template <class T> std::decay_t<T> decayCopy(T&& v)
 { return std::forward<T>(v); }
 
@@ -148,28 +158,10 @@ private:
     QRunnable* m_runnable;
 };
 
-
-// Başarısız çıkarsama bir hata değildir
-
-template <typename...> using void_t = void;
-
-template <typename T, typename = void>
-struct is_function_call_viable : std::false_type {};
-
-template <typename T>
-struct is_function_call_viable<T, void_t<std::result_of_t<T>>> : std::true_type {};
-
-
-template <typename Function, typename... Args,
-          typename = std::enable_if_t<!is_function_call_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value>
-          >
-auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
-         Function&& function, Args&&... args)
+template <typename Runnble>
+auto run(Runnble runnable, QThreadPool* pool, QThread::Priority priority, StackSize stackSize)
 {
     Q_ASSERT(!(pool && stackSize)); // stack size cannot be changed once a thread is started
-    auto runnable = new Runnable<std::false_type, Function, Args...>(
-                std::forward<Function>(function),
-                std::forward<Args>(args)...);
     runnable->setThreadPriority(priority);
     if (pool) {
         runnable->setThreadPool(pool);
@@ -177,7 +169,7 @@ auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
     } else {
         auto thread = new RunnableThread(runnable);
         if (stackSize)
-            thread->setStackSize(stackSize.value());
+        thread->setStackSize(stackSize.value());
         thread->moveToThread(qApp->thread()); // make sure thread gets deleteLater on main thread
         QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
         thread->start(priority);
@@ -186,29 +178,26 @@ auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
 }
 
 template <typename Function, typename... Args,
+          typename = std::enable_if_t<!is_function_call_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value>
+          >
+auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
+         Function&& function, Args&&... args)
+{
+    return run(new Runnable<std::false_type, Function, Args...>(
+                   std::forward<Function>(function),
+                   std::forward<Args>(args)...), pool, priority, stackSize);
+}
+
+template <typename Function, typename... Args,
           typename std::enable_if_t<is_function_call_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value, int> = 0
           >
 auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
          Function&& function, Args&&... args)
 {
-    Q_ASSERT(!(pool && stackSize)); // stack size cannot be changed once a thread is started
-    auto runnable = new Runnable<std::true_type, Function, QFutureInterfaceBase*, Args...>(
-                std::forward<Function>(function),
-                static_cast<QFutureInterfaceBase*>(nullptr),
-                std::forward<Args>(args)...);
-    runnable->setThreadPriority(priority);
-    if (pool) {
-        runnable->setThreadPool(pool);
-        pool->start(runnable);
-    } else {
-        auto thread = new RunnableThread(runnable);
-        if (stackSize)
-            thread->setStackSize(stackSize.value());
-        thread->moveToThread(qApp->thread()); // make sure thread gets deleteLater on main thread
-        QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-        thread->start(priority);
-    }
-    return runnable->future();
+    return run(new Runnable<std::true_type, Function, QFutureInterfaceBase*, Args...>(
+                   std::forward<Function>(function),
+                   new QFutureInterfaceBase,
+                   std::forward<Args>(args)...), pool, priority, stackSize);
 }
 } // Internal
 
