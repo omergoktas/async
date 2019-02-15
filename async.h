@@ -29,73 +29,56 @@
 #include <QFuture>
 #include <QThreadPool>
 
-
-#include <iostream>
-
 namespace Async {
 
 using StackSize = Optional<uint>;
 
 namespace Internal {
 
+template <typename...> using void_t = void;
+
+template <typename T, typename = void>
+struct is_overload_viable : std::false_type {};
+
+template <typename T>
+struct is_overload_viable<T, void_t<std::result_of_t<T>>> : std::true_type {};
+
 /*!
-    void (QFutureInterface*)         | Plain call  -  No report
-    void (no QFutureInterface*)      | Plain call  -  No need to report
-    non-void (QFutureInterface*)     | Plain call  -  No report
-    non-void (no QFutureInterface*)  | Report call -  Report the result
+    void (QFutureInterface*)        | Plain call  -  No report
+    void (no QFutureInterface*)     | Plain call  -  No need to report
+    non-void (QFutureInterface*)    | Plain call  -  No report
+    non-void (no QFutureInterface*) | Report call -  Report the result
 */
 
 // Plain call
 template <typename ReturnType, typename Function, typename... Args>
 void call(std::true_type, QFutureInterface<ReturnType>*, Function&& function, Args&&... args)
-{
-    std::forward<Function>(function)(std::forward<Args>(args)...);
-}
+{ std::forward<Function>(function)(std::forward<Args>(args)...); }
 
 // Report call
 template <typename ReturnType, typename Function, typename... Args>
-void call(std::false_type, QFutureInterface<ReturnType>* futureInterface, Function&& function, Args&&... args)
-{
-    futureInterface->reportResult(std::forward<Function>(function)(std::forward<Args>(args)...));
-}
+void call(std::false_type, QFutureInterface<ReturnType>* future, Function&& function, Args&&... args)
+{ future->reportResult(std::forward<Function>(function)(std::forward<Args>(args)...)); }
 
 // Call with QFutureInterface*
 template <typename ReturnType, typename Function, typename... Args>
-void runHelperImpl(std::true_type, QFutureInterface<ReturnType>* futureInterface, Function&& function, Args&&... args)
-{
-    call(std::true_type(), futureInterface,
-         std::forward<Function>(function), futureInterface, std::forward<Args>(args)...);
-}
+void dispatchFutureCall(std::true_type, QFutureInterface<ReturnType>* future, Function&& function, Args&&... args)
+{ call(std::true_type(), future, std::forward<Function>(function), future, std::forward<Args>(args)...); }
 
 // Call without QFutureInterface*
 template <typename ReturnType, typename Function, typename... Args>
-void runHelperImpl(std::false_type, QFutureInterface<ReturnType>* futureInterface, Function&& function, Args&&... args)
-{
-    call(std::is_void<std::result_of_t<Function(Args...)>>(), futureInterface,
-         std::forward<Function>(function), std::forward<Args>(args)...);
-}
+void dispatchFutureCall(std::false_type, QFutureInterface<ReturnType>* future, Function&& function, Args&&... args)
+{ call(std::is_void<std::result_of_t<Function(Args...)>>(), future, std::forward<Function>(function), std::forward<Args>(args)...); }
 
-// Başarısız çıkarsama bir hata değildir
-
-template <typename...> using void_t = void;
-
-template <typename T, typename = void>
-struct is_function_call_viable : std::false_type {};
-
-template <typename T>
-struct is_function_call_viable<T, void_t<std::result_of_t<T>>> : std::true_type {};
-
-template <class T> std::decay_t<T> decayCopy(T&& v)
-{ return std::forward<T>(v); }
-
-template <typename T, typename ReturnType, typename Function, typename... Args>
+template <typename is_future, typename ReturnType, typename Function, typename... Args>
 class Runnable : public QRunnable
 {
     using FunctionStorage = std::tuple<std::decay_t<Function>, std::decay_t<Args>...>;
 
 public:
     Runnable(Function&& function, Args&&... args) : m_priority(QThread::InheritPriority)
-      , m_functionStorage(decayCopy(std::forward<Function>(function)), decayCopy(std::forward<Args>(args))...)
+      , m_functionStorage(std::decay_t<Function>(std::forward<Function>(function)),
+                          std::decay_t<Args>(std::forward<Args>(args))...)
     {
         m_futureInterface.setRunnable(this);
         m_futureInterface.reportStarted();
@@ -126,14 +109,14 @@ public:
             return;
         }
 
-        runHelper(std::make_index_sequence<std::tuple_size<FunctionStorage>::value>());
+        dispatchCall(std::make_index_sequence<std::tuple_size<FunctionStorage>::value>());
     }
 
     template <std::size_t... index>
-    void runHelper(std::index_sequence<index...>)
+    void dispatchCall(std::index_sequence<index...>)
     {
         // invalidates data, which is moved into the call
-        runHelperImpl(T(), &m_futureInterface, std::move(std::get<index>(m_functionStorage))...);
+        dispatchFutureCall(is_future(), &m_futureInterface, std::move(std::get<index>(m_functionStorage))...);
         if (m_futureInterface.isPaused())
             m_futureInterface.waitForResume();
         m_futureInterface.reportFinished();
@@ -177,79 +160,72 @@ auto run(Runnble runnable, QThreadPool* pool, QThread::Priority priority, StackS
 }
 
 template <typename Function, typename... Args,
-          typename = std::enable_if_t<!is_function_call_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value>
-          >
+          typename = std::enable_if_t<!is_overload_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value>>
 auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
          Function&& function, Args&&... args)
 {
     using ReturnType = std::result_of_t<std::decay_t<Function>(std::decay_t<Args>...)>;
     return run(new Runnable<std::false_type, ReturnType, Function, Args...>(
-                   std::forward<Function>(function),
-                   std::forward<Args>(args)...), pool, priority, stackSize);
+                   std::forward<Function>(function), std::forward<Args>(args)...), pool, priority, stackSize);
 }
 
 template <typename Function, typename... Args,
-          typename std::enable_if_t<is_function_call_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value, int> = 0
-          >
+          typename std::enable_if_t<is_overload_viable<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>::value, int> = 0>
 auto run(QThreadPool* pool, QThread::Priority priority, StackSize stackSize,
          Function&& function, Args&&... args)
 {
     using ReturnType = std::result_of_t<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>;
     return run(new Runnable<std::true_type, ReturnType, Function, Args...>(
-                   std::forward<Function>(function),
-                   std::forward<Args>(args)...), pool, priority, stackSize);
+                   std::forward<Function>(function), std::forward<Args>(args)...), pool, priority, stackSize);
 }
 } // Internal
-
-template<typename Function, typename... Args>
-auto run(StackSize stackSize, QThread::Priority priority, Function&& function, Args&&... args)
-{
-    return Internal::run(nullptr, priority, stackSize,
-                         std::forward<Function>(function),
-                         std::forward<Args>(args)...);
-}
 
 template <typename Function, typename... Args>
 auto run(QThreadPool* pool, QThread::Priority priority, Function&& function, Args&&... args)
 {
     return Internal::run(pool, priority, StackSize(),
-                         std::forward<Function>(function),
-                         std::forward<Args>(args)...);
+                         std::forward<Function>(function), std::forward<Args>(args)...);
+}
+
+template<typename Function, typename... Args>
+auto run(const StackSize& stackSize, QThread::Priority priority, Function&& function, Args&&... args)
+{
+    return Internal::run(nullptr, priority, stackSize,
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template <typename Function, typename... Args>
 auto run(QThread::Priority priority, Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, priority, StackSize(),
-                         std::forward<Function>(function),
-                         std::forward<Args>(args)...);
+                         std::forward<Function>(function), std::forward<Args>(args)...);
+}
+
+template<typename Function, typename... Args,
+          typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>()>>
+auto run(const StackSize& stackSize, Function&& function, Args&&... args)
+{
+    return Internal::run(nullptr, QThread::InheritPriority, stackSize,
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template <typename Function, typename... Args,
-          typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
+          typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>()>>
 auto run(QThreadPool* pool, Function&& function, Args&&... args)
 {
     return Internal::run(pool, QThread::InheritPriority, StackSize(),
-                         std::forward<Function>(function),
-                         std::forward<Args>(args)...);
-}
-
-template<typename Function, typename... Args>
-auto run(StackSize stackSize, Function&& function, Args&&... args)
-{
-    return Internal::run(nullptr, QThread::InheritPriority, stackSize,
-                         std::forward<Function>(function),
-                         std::forward<Args>(args)...);
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template <typename Function, typename... Args,
-          typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThreadPool>::value &&
-                                      !std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
+          typename = std::enable_if_t<
+              !std::is_same<std::decay_t<Function>, StackSize>() &&
+              !std::is_same<std::decay_t<Function>, QThreadPool>() &&
+              !std::is_same<std::decay_t<Function>, QThread::Priority>()>>
 auto run(Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, QThread::InheritPriority, StackSize(),
-                         std::forward<Function>(function),
-                         std::forward<Args>(args)...);
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 } // Async
 

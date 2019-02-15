@@ -34,7 +34,7 @@ public:
     explicit operator bool() const { return m_engaged; }
     void reset() { m_engaged = false; }
     const T& value() const { return m_value; }
-    void emplace(const T& value) { m_engaged(true); m_value(value); }
+    void emplace(const T& value) { m_engaged = true; m_value = value; }
 private:
     T m_value;
     bool m_engaged;
