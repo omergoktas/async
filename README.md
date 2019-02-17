@@ -34,6 +34,75 @@ Async::run(c, "Boom!");                            // };
 Async::run(Callable(), "Hey!");
 ```
 
+## Example progress reporting
+
+```cpp
+#include <async.h>
+#include <QRandomGenerator>
+#include <QApplication>
+#include <QFutureWatcher>
+#include <QPushButton>
+#include <QTimer>
+
+// Example task function
+int timeConsumingRandomNumberGenerator(QFutureInterfaceBase* futureInterface, int rangeMin, int rangeMax)
+{
+    auto future = static_cast<QFutureInterface<int>*>(futureInterface);
+    future->setProgressRange(0, 100);
+    future->setProgressValue(0);
+
+    int value = QRandomGenerator::global()->bounded(rangeMin, rangeMax);
+    for (int i = 1; i <= 100; ++i) {
+        if (future->isPaused())
+            future->waitForResume();
+        if (future->isCanceled())
+            return value;
+        value = QRandomGenerator::global()->bounded(rangeMin, rangeMax);
+        future->setProgressValueAndText(i, QString("Random number: %1").arg(value));
+        QThread::msleep(50);
+    }
+
+    future->reportResult(value);
+    return value;
+}
+
+int main(int argc, char* argv[])
+{
+    QApplication app(argc, argv);
+
+    //! Run the task asynchronously
+    QFutureWatcher<int> watcher;
+    watcher.setFuture(Async::run(timeConsumingRandomNumberGenerator, 100, 999));
+
+    //! Pause/resume the task
+    QPushButton pauseButton;
+    pauseButton.setText("Pause/Resume");
+    pauseButton.show();
+    QObject::connect(&pauseButton, &QPushButton::clicked, [&] {
+        watcher.future().togglePaused();
+        qWarning("Operation %s", watcher.isPaused() ? "paused" : "running");
+    });
+
+    //! Catch state changes on the task by connecting appropriate signals to slots
+    QObject::connect(&watcher, &QFutureWatcherBase::progressTextChanged, [&]
+    { qWarning("%s", watcher.progressText().toUtf8().data()); });
+    QObject::connect(&watcher, &QFutureWatcherBase::progressValueChanged, [&]
+    { qWarning("Progress: %d", watcher.progressValue()); });
+    QObject::connect(&watcher, &QFutureWatcherBase::resultReadyAt, [&]
+    { qWarning("Result ready, result: %d", watcher.result()); });
+    QObject::connect(&watcher, &QFutureWatcherBase::canceled, [&]
+    { qWarning("Operation canceled!"); });
+    QObject::connect(&watcher, &QFutureWatcherBase::finished, [&]
+    { qWarning("Operation finished!"); app.quit(); });
+    // Note: See QTBUG-12152 for QFutureWatcherBase::paused signal
+
+    //! Cancel the operation after 1 second
+    // QTimer::singleShot(1000, &watcher, &QFutureWatcher<int>::cancel);
+
+    return app.exec();
+}
+```
+
 ## Advanced usage
 
 Please check out following example Qt project for more detailed use cases [asynctest](https://github.com/omergoktas/asynctest)
