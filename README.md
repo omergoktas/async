@@ -37,3 +37,7 @@ Async::run(Callable(), "Hey!");
 ## Advanced usage
 
 Please check out following example Qt project for more detailed use cases [asynctest](https://github.com/omergoktas/asynctest)
+
+<p align="center">
+  <img src="https://omergoktas.github.io/githubfiles/asynctest/asynctest.gif">
+</p>
