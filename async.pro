@@ -34,8 +34,4 @@ unix {
     INSTALLS += target
 }
 
-osx {
-    QMAKE_LFLAGS_SONAME = -Wl,-install_name,@rpath/Frameworks/
-}
-
 include(async.pri)
