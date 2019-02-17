@@ -24,6 +24,7 @@
 #define ASYNC_H
 
 #include "optional.h"
+#include "async_global.h"
 
 #include <QCoreApplication>
 #include <QFuture>
@@ -127,7 +128,6 @@ public:
             m_futureInterface.reportFinished();
             return;
         }
-
         dispatch(std::make_index_sequence<std::tuple_size<FunctionStorage>::value>());
     }
 
@@ -135,7 +135,6 @@ private:
     template <std::size_t... index>
     void dispatch(std::index_sequence<index...>)
     {
-        // invalidates data, which is moved into the call
         dispatchFuture(is_future_overload<Function, Args...>(),
                        &m_futureInterface, std::move(std::get<index>(m_functionStorage))...);
         if (m_futureInterface.isPaused())
@@ -160,70 +159,70 @@ protected:
 private:
     QRunnable* m_runnable;
 };
-} // Internal
 
 template <typename Function, typename... Args>
-auto runAdvanced(QThreadPool* pool, QThread::Priority priority, const StackSize& stackSize,
-                 Function&& function, Args&&... args)
+auto run(QThreadPool* pool, QThread::Priority priority, const StackSize& stackSize,
+         Function&& function, Args&&... args)
 {
     auto runnable = new Internal::Runnable<Function, Args...>(std::forward<Function>(function),
                                                               std::forward<Args>(args)...);
     runnable->setThreadPriority(priority);
     if (pool) {
-        Q_ASSERT(!stackSize); // Can't change stack size for QThreadPool
+        Q_ASSERT(!stackSize);
         runnable->setThreadPool(pool);
         pool->start(runnable);
     } else {
         auto thread = new Internal::RunnableThread(runnable);
         if (stackSize)
             thread->setStackSize(stackSize.value());
-        thread->moveToThread(qApp->thread()); // make sure thread gets deleteLater on main thread
+        thread->moveToThread(qApp->thread());
         QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
         thread->start(priority);
     }
     return runnable->future();
 }
+} // Internal
 
 template <typename Function, typename... Args>
 auto run(QThreadPool* pool, QThread::Priority priority, Function&& function, Args&&... args)
 {
-    return runAdvanced(pool, priority, StackSize(),
-                       std::forward<Function>(function), std::forward<Args>(args)...);
+    return Internal::run(pool, priority, StackSize(),
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template<typename Function, typename... Args>
 auto run(const StackSize& stackSize, QThread::Priority priority, Function&& function, Args&&... args)
 {
-    return runAdvanced(nullptr, priority, stackSize,
-                       std::forward<Function>(function), std::forward<Args>(args)...);
+    return Internal::run(nullptr, priority, stackSize,
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template <typename Function, typename... Args>
 auto run(QThread::Priority priority, Function&& function, Args&&... args)
 {
-    return runAdvanced(nullptr, priority, StackSize(),
-                       std::forward<Function>(function), std::forward<Args>(args)...);
+    return Internal::run(nullptr, priority, StackSize(),
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template<typename Function, typename... Args>
 auto run(const StackSize& stackSize, Function&& function, Args&&... args)
 {
-    return runAdvanced(nullptr, QThread::InheritPriority, stackSize,
-                       std::forward<Function>(function), std::forward<Args>(args)...);
+    return Internal::run(nullptr, QThread::InheritPriority, stackSize,
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template <typename Function, typename... Args>
 auto run(QThreadPool* pool, Function&& function, Args&&... args)
 {
-    return runAdvanced(pool, QThread::InheritPriority, StackSize(),
-                       std::forward<Function>(function), std::forward<Args>(args)...);
+    return Internal::run(pool, QThread::InheritPriority, StackSize(),
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
 template <typename Function, typename... Args>
 auto run(Function&& function, Args&&... args)
 {
-    return runAdvanced(nullptr, QThread::InheritPriority, StackSize(),
-                       std::forward<Function>(function), std::forward<Args>(args)...);
+    return Internal::run(nullptr, QThread::InheritPriority, StackSize(),
+                         std::forward<Function>(function), std::forward<Args>(args)...);
 }
 } // Async
 

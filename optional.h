@@ -23,10 +23,8 @@
 #ifndef OPTIONAL_H
 #define OPTIONAL_H
 
-#include <async_global.h>
-
 template<typename T>
-class ASYNC_EXPORT Optional final {
+class Optional final {
 public:
     Optional() : m_engaged(false) {}
     Optional(const T& value) { emplace(value); }
