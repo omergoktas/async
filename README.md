@@ -1,6 +1,6 @@
 # Async
 
-Basic utility library based on Qt/C++ that runs a function asynchronously in a separate thread which may also be part of a thread pool and returns a QFuture object that will eventually let you handle the results of that function call.
+Basic utility library based on Qt/C++ that runs a function asynchronously in a separate thread which may also be part of a thread pool and returns a QFuture object that will eventually let you handle the results (states) of that function call. It supports pause/resume/cancel functionality for a task running on a thread. It also supports instant progress reporting via QFutureWatcher class. You can use Qt's signal/slot mechanism to catch those progress changes happens on your worker thread from the main thread.
 
 > C++14 needed
 
