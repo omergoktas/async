@@ -204,21 +204,29 @@ auto run(QThread::Priority priority, Function&& function, Args&&... args)
                          std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
-template<typename Function, typename... Args>
+template<typename Function, typename... Args,
+         typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
 auto run(const StackSize& stackSize, Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, QThread::InheritPriority, stackSize,
                          std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
-template <typename Function, typename... Args>
+template <typename Function, typename... Args,
+          typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
 auto run(QThreadPool* pool, Function&& function, Args&&... args)
 {
     return Internal::run(pool, QThread::InheritPriority, StackSize(),
                          std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
-template <typename Function, typename... Args>
+template <typename Function, typename... Args,
+          typename = std::enable_if_t<
+              !std::is_convertible<Function, StackSize>::value &&
+              !std::is_same<std::decay_t<Function>, QThreadPool>::value &&
+              !std::is_same<std::decay_t<Function>, QThread::Priority>::value
+              >
+          >
 auto run(Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, QThread::InheritPriority, StackSize(),
