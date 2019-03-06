@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
 
 ## Advanced usage
 
-Please check out following example Qt project for more detailed use cases [asynctest](https://github.com/omergoktas/asynctest)
+Please check out following example Qt projects for more detailed use cases [asynctest](https://github.com/omergoktas/asynctest) or [zipasync](https://github.com/omergoktas/zipasync)
 
 <p align="center">
   <img src="https://omergoktas.github.io/githubfiles/asynctest/asynctest.gif">
