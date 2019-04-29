@@ -20,14 +20,16 @@
 ##
 ##**************************************************************************
 
-QT      -= gui
-TEMPLATE = lib
-TARGET   = async
-CONFIG  += shared dll strict_c++
+QT          -= gui
+TEMPLATE     = lib
+TARGET       = async
+CONFIG      += shared dll strict_c++
 
-DEFINES += ASYNC_LIBRARY
-DEFINES += QT_DEPRECATED_WARNINGS
-DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
+DEFINES     += ASYNC_LIBRARY
+DEFINES     += QT_DEPRECATED_WARNINGS
+DEFINES     += QT_DISABLE_DEPRECATED_BEFORE=0x060000
+
+OTHER_FILES += $$PWD/TODO
 
 unix {
     target.path = /usr/lib
