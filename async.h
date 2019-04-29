@@ -88,8 +88,10 @@ void dispatchFuture(std::false_type, QFutureInterface<ReturnType>* future, Funct
 }
 
 template <typename Function, typename... Args>
-class Runnable : public QRunnable
+class Runnable final : public QRunnable
 {
+    Q_DISABLE_COPY(Runnable)
+
     using ReturnType = typename std::conditional_t<is_future_overload_v<Function, Args...>,
     std::result_of<std::decay_t<Function>(QFutureInterfaceBase*, std::decay_t<Args>...)>,
     std::result_of<std::decay_t<Function>(std::decay_t<Args>...)>>::type;
@@ -105,16 +107,24 @@ public:
     }
 
     ~Runnable() override
-    { m_futureInterface.reportFinished(); }
+    {
+        m_futureInterface.reportFinished();
+    }
 
     QFuture<ReturnType> future()
-    { return m_futureInterface.future(); }
+    {
+        return m_futureInterface.future();
+    }
 
     void setThreadPool(QThreadPool* threadPool)
-    { m_futureInterface.setThreadPool(threadPool); }
+    {
+        m_futureInterface.setThreadPool(threadPool);
+    }
 
     void setThreadPriority(QThread::Priority priority)
-    { m_priority = priority; }
+    {
+        m_priority = priority;
+    }
 
     void run() override
     {
@@ -148,12 +158,15 @@ private:
     QFutureInterface<ReturnType> m_futureInterface;
 };
 
-class ASYNC_EXPORT RunnableThread : public QThread
+class ASYNC_EXPORT RunnableThread final : public QThread
 {
+    Q_OBJECT
+    Q_DISABLE_COPY(RunnableThread)
+
 public:
     explicit RunnableThread(QRunnable* runnable, QObject* parent = nullptr);
 
-protected:
+private:
     void run() override;
 
 private:
@@ -181,6 +194,7 @@ auto run(QThreadPool* pool, QThread::Priority priority, const StackSize& stackSi
     }
     return runnable->future();
 }
+
 } // Internal
 
 template <typename Function, typename... Args>
@@ -190,7 +204,7 @@ auto run(QThreadPool* pool, QThread::Priority priority, Function&& function, Arg
                          std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
-template<typename Function, typename... Args>
+template <typename Function, typename... Args>
 auto run(const StackSize& stackSize, QThread::Priority priority, Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, priority, stackSize,
@@ -204,8 +218,8 @@ auto run(QThread::Priority priority, Function&& function, Args&&... args)
                          std::forward<Function>(function), std::forward<Args>(args)...);
 }
 
-template<typename Function, typename... Args,
-         typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
+template <typename Function, typename... Args,
+          typename = std::enable_if_t<!std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
 auto run(const StackSize& stackSize, Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, QThread::InheritPriority, stackSize,
@@ -224,14 +238,13 @@ template <typename Function, typename... Args,
           typename = std::enable_if_t<
               !std::is_convertible<Function, StackSize>::value &&
               !std::is_same<std::decay_t<Function>, QThreadPool>::value &&
-              !std::is_same<std::decay_t<Function>, QThread::Priority>::value
-              >
-          >
+              !std::is_same<std::decay_t<Function>, QThread::Priority>::value>>
 auto run(Function&& function, Args&&... args)
 {
     return Internal::run(nullptr, QThread::InheritPriority, StackSize(),
                          std::forward<Function>(function), std::forward<Args>(args)...);
 }
+
 } // Async
 
 #endif // ASYNC_H

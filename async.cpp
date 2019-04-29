@@ -20,9 +20,10 @@
 **
 ****************************************************************************/
 
-#include <async.h>
+#include "async.h"
 
 namespace Async {
+
 namespace Internal {
 
 RunnableThread::RunnableThread(QRunnable* runnable, QObject* parent) : QThread(parent)
@@ -36,5 +37,6 @@ void RunnableThread::run()
     if (m_runnable->autoDelete())
         delete m_runnable;
 }
+
 } // Internal
 } // Async
