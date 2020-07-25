@@ -1,3 +1,1 @@
 - Add doxygen documentations
-- Do not always take the progress reporting type from the return type of worker function provided.
-  Let users to be able to provide it manually as they wish.
