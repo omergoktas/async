@@ -20,14 +20,14 @@
 ##
 ##**************************************************************************
 
-QT          -= gui
-TEMPLATE     = lib
-TARGET       = async
-CONFIG      += shared dll strict_c++
-
-DEFINES     += ASYNC_LIBRARY
-DEFINES     += QT_DEPRECATED_WARNINGS
-DEFINES     += QT_DISABLE_DEPRECATED_BEFORE=0x060000
+QT -= gui
+TEMPLATE = lib
+TARGET = async
+CONFIG += shared strict_c strict_c++ utf8_source hide_symbols
+gcc:QMAKE_CXXFLAGS += -pedantic-errors
+msvc:QMAKE_CXXFLAGS += -permissive-
+DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
+DEFINES += ASYNC_LIBRARY
 
 OTHER_FILES += $$PWD/TODO \
                $$PWD/LICENSE

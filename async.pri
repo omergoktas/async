@@ -21,10 +21,7 @@
 ##**************************************************************************
 
 CONFIG      += c++14
-
 DEFINES     += ASYNC_INCLUDE_STATIC
-
-DEPENDPATH  += $$PWD
 INCLUDEPATH += $$PWD
 
 SOURCES     += $$PWD/async.cpp
